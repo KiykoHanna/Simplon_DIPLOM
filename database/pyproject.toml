@@ -3,10 +3,13 @@ name = "database"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.15.0",
     "gdown>=6.4.2",
     "loguru>=0.7.3",
+    "pandas>=3.0.6",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.16.0",
+    "remotezip>=0.12.6",
     "requests>=2.34.2",
     "sqlalchemy>=2.1.5",
 ]
