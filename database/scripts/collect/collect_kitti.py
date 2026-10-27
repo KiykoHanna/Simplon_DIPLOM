@@ -15,7 +15,7 @@ except ImportError:
     RemoteZip = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_ROOT = PROJECT_ROOT / "database" / "data" / "kitti"
+DATA_ROOT = PROJECT_ROOT / "data" / "kitti"
 RAW_ROOT = DATA_ROOT / "raw"
 REPORT_ROOT = DATA_ROOT / "reports"
 ARCHIVE_ROOT = DATA_ROOT / "archives"

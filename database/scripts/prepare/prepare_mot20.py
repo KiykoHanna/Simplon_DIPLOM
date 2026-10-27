@@ -7,8 +7,8 @@ import pandas as pd
 from loguru import logger
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_ROOT = PROJECT_ROOT / "database" / "data" / "mot20"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_ROOT = PROJECT_ROOT / "data" / "mot20"
 RAW_ROOT = DATA_ROOT / "raw"
 PREPARED_ROOT = DATA_ROOT / "prepared"
 PARQUET_ROOT = DATA_ROOT / "parquet"

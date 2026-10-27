@@ -6,6 +6,7 @@ import json
 import math
 import re
 import zipfile
+from loguru import logger
 from collections import Counter
 from configparser import ConfigParser
 from datetime import datetime, timezone
@@ -19,7 +20,7 @@ from remotezip import RemoteZip
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "database" / "data" / "dancetrack"
+DATA_DIR = PROJECT_ROOT / "data" / "dancetrack"
 ARCHIVE_DIR = DATA_DIR / "archives"
 REPORT_DIR = DATA_DIR / "reports"
 GT_DIR = DATA_DIR / "ground_truth"
@@ -310,16 +311,16 @@ def main() -> None:
             url = ARCHIVES[name]
             local_path = ARCHIVE_DIR / name
             if args.download:
-                print(f"[DOWNLOAD] {name}")
+                logger.info(f"[DOWNLOAD] {name}")
                 try:
                     local_path = download_archive(session, name, url)
-                    print(f"  Valid ZIP: {local_path} ({local_path.stat().st_size:,} bytes)")
+                    logger.info(f"  Valid ZIP: {local_path} ({local_path.stat().st_size:,} bytes)")
                 except Exception as exc:
                     report["archive_validation"].append({
                         "archive": name, "status": "download_failed",
                         "errors": [f"{type(exc).__name__}: {exc}"], "sequences": [],
                     })
-                    print(f"  Download failed: {exc}")
+                    logger.info(f"  Download failed: {exc}")
                     continue
             elif args.local_only:
                 if not local_path.is_file() or not zipfile.is_zipfile(local_path):
@@ -336,14 +337,14 @@ def main() -> None:
                         "reason": "HTTP Range probe failed; use --download <archive> for local inspection",
                         "sequences": [], "errors": [probe["error"]] if probe["error"] else [],
                     })
-                    print(f"[SKIP] {name}: remote range access unavailable")
+                    logger.info(f"[SKIP] {name}: remote range access unavailable")
                     continue
-            print(f"[INSPECT] {name} ({'local' if local_path.is_file() and zipfile.is_zipfile(local_path) else 'remote'})")
+            logger.info(f"[INSPECT] {name} ({'local' if local_path.is_file() and zipfile.is_zipfile(local_path) else 'remote'})")
             use_local = local_path if local_path.is_file() and zipfile.is_zipfile(local_path) else None
             archive_result, rows = inspect_archive(name, url, use_local)
             report["archive_validation"].append(archive_result)
             all_gt_rows.extend(rows)
-            print(
+            logger.info(
                 f"  status={archive_result['status']}, sequences={len(archive_result['sequences'])}, "
                 f"images_in_archive={archive_result['image_entries']}, valid_GT_rows={archive_result['valid_gt_rows']}, "
                 f"invalid_GT_rows={archive_result['invalid_gt_rows']}"
@@ -380,10 +381,10 @@ def main() -> None:
     }
     report_path = REPORT_DIR / "dancetrack_validation_report.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n[REPORT] {report_path}")
-    print(f"[SEQUENCES] {sequences_path}")
-    print(f"[GT CSV] {gt_path} ({len(all_gt_rows):,} valid rows)")
-    print(json.dumps(report["summary"], ensure_ascii=False, indent=2))
+    logger.info(f"\n[REPORT] {report_path}")
+    logger.info(f"[SEQUENCES] {sequences_path}")
+    logger.info(f"[GT CSV] {gt_path} ({len(all_gt_rows):,} valid rows)")
+    logger.info(json.dumps(report["summary"], ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

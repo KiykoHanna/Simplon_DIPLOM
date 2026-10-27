@@ -8,8 +8,8 @@ import math
 import pandas as pd
 
 # -------------------------------------------------------- path
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = PROJECT_ROOT / "database" / "data" / "kitti"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data" / "kitti"
 
 RAW_DIR = DATA_DIR / "raw"
 PREPARED_DIR = DATA_DIR / "prepared"
@@ -129,7 +129,7 @@ def prepare_sequences(raw_sequences: list[dict]) -> tuple[pd.DataFrame, list[dic
         prepared.append(
             {
                 "dataset_name": str(item.get("dataset_name", "KITTI Tracking")),
-                "name": sequence_name,
+                "name": f"{split}/{sequence_name}",
                 "split": split,
                 "fps": item.get("fps"),
                 "width": item.get("width"),
@@ -199,7 +199,7 @@ def prepare_ground_truth() -> tuple[pd.DataFrame, dict]:
                         continue
 
                     record = dict(zip(KITTI_GT_COLUMNS, fields))
-                    record["sequence_name"] = sequence_name
+                    record["sequence_name"] = f"train/{sequence_name}"
 
                     for column in KITTI_GT_COLUMNS:
                         if column in {"frame", "track_id"}:
@@ -279,9 +279,11 @@ def main() -> None:
     sequences_path = PREPARED_DIR / "kitti_sequences.csv"
     report_path = REPORTS_DIR / "kitti_preparation_report.json"
     ground_truth_path = PREPARED_DIR / "kitti_ground_truth.csv"
+    ground_truth_parquet_path = PREPARED_DIR / "kitti_ground_truth.parquet"
 
     datasets_df.to_csv(datasets_path, index=False)
     sequences_df.to_csv(sequences_path, index=False)
+    ground_truth_df.to_parquet(ground_truth_parquet_path, index=False, engine="pyarrow")
 
     ground_truth_df.to_csv(ground_truth_path, index=False)
 
@@ -298,6 +300,7 @@ def main() -> None:
         "rejected_sequences": rejected,
         "ground_truth": gt_summary,
         "ground_truth_csv": str(ground_truth_path),
+        "ground_truth_parquet": str(ground_truth_parquet_path),
     }
 
     with report_path.open("w", encoding="utf-8") as file:
@@ -307,6 +310,7 @@ def main() -> None:
     logger.info("Sequences CSV: {}", sequences_path)
     logger.info("Preparation report: {}", report_path)
     logger.info("Ground truth CSV: {}", ground_truth_path)
+    logger.info("Ground truth Parquet: {}", ground_truth_parquet_path)
 
     logger.info(
         "KITTI preparation completed: read={}, prepared={}, rejected={}",

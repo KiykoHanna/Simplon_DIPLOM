@@ -5,18 +5,20 @@ import zipfile
 from collections import Counter
 from pathlib import Path
 from loguru import logger
+from huggingface_hub import hf_hub_download
 
 import gdown
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_DIR / "database" / "data" / "visdrone"
+DATA_DIR = PROJECT_DIR / "data" / "visdrone"
 ARCHIVE_DIR = DATA_DIR / "archives"
 EXTRACT_DIR = DATA_DIR / "raw"
 REPORT_DIR = DATA_DIR / "reports"
 
 ARCHIVE_NAME = "VisDrone2019-MOT-val.zip"
-GOOGLE_DRIVE_FILE_ID = "1rqnKe9IgU_crMaxRoel9_nuUsMEBBVQu"
+HF_REPO_ID = "vanthanh/VisDrone2019-MOT"
+HF_FILENAME = "VisDrone2019-MOT-val.zip"
 
 # Expected VisDrone-MOT annotation columns:
 # frame, track_id, x, y, width, height, score,
@@ -30,58 +32,40 @@ def download_dataset() -> Path:
 
     logger.info("Checking local archive: {}", archive_path)
 
-    if archive_path.exists() and zipfile.is_zipfile(archive_path):
-        logger.info(
-            "A valid archive already exists: {} ({} GB)",
-            archive_path,
-            f"{archive_path.stat().st_size / (1024**3):.2f}",
-        )
+    if archive_path.is_file() and zipfile.is_zipfile(archive_path):
+        logger.info("A valid archive already exists: {}", archive_path)
         return archive_path
 
     if archive_path.exists():
-        logger.warning(
-            "Existing archive is invalid or incomplete. Removing: {}",
-            archive_path,
-        )
+        logger.warning("Removing invalid archive: {}", archive_path)
         archive_path.unlink()
 
-    url = f"https://drive.google.com/uc?id={GOOGLE_DRIVE_FILE_ID}"
-    logger.info("Checking download source: {}", url)
-    logger.info("Starting download of {}", ARCHIVE_NAME)
+    logger.info("Downloading {} from Hugging Face", HF_FILENAME)
 
     try:
-        result = gdown.download(
-            url=url,
-            output=str(archive_path),
-            quiet=False,
+        downloaded_path = hf_hub_download(
+            repo_id=HF_REPO_ID,
+            filename=HF_FILENAME,
+            repo_type="dataset",
+            local_dir=str(ARCHIVE_DIR),
         )
 
-        if result is None or not archive_path.is_file():
+        downloaded_path = Path(downloaded_path)
+
+        if not downloaded_path.is_file():
             raise RuntimeError("No archive was created by the downloader.")
 
-        if not zipfile.is_zipfile(archive_path):
-            raise RuntimeError(
-                "Downloaded file is not a valid ZIP archive. "
-                "Check that the source points to VisDrone-MOT, not VisDrone-DET."
-            )
+        if not zipfile.is_zipfile(downloaded_path):
+            raise RuntimeError("Downloaded file is not a valid ZIP archive.")
 
-        archive_size_gb = archive_path.stat().st_size / (1024**3)
+        if downloaded_path != archive_path:
+            downloaded_path.replace(archive_path)
 
-        logger.success(
-            "Download completed: {} ({} GB)",
-            archive_path,
-            f"{archive_size_gb:.2f}",
-        )
-
+        logger.success("Download completed: {}", archive_path)
         return archive_path
 
     except Exception:
-        archive_path.unlink(missing_ok=True)
-        logger.exception(
-            "Failed to download or validate {}. "
-            "Check the link, network connection, and Google Drive download limits.",
-            ARCHIVE_NAME,
-        )
+        logger.exception("Failed to download or validate {}", ARCHIVE_NAME)
         raise
 
 

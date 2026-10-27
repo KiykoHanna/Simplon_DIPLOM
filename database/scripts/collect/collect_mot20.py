@@ -1,8 +1,9 @@
-
+﻿
 """Collect MOT20 annotations from the Hugging Face Hub."""
 
 from pathlib import Path
 from typing import Any
+import configparser
 
 import requests
 from loguru import logger
@@ -13,9 +14,10 @@ DATASET_URL = (
     f"https://huggingface.co/datasets/{DATASET_ID}/resolve/main"
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = PROJECT_ROOT / "data" / "mot20"
 RAW_ROOT = DATA_ROOT / "raw"
+IMAGES_ROOT = DATA_ROOT / "images"
 REPORT_PATH = DATA_ROOT / "reports" / "mot20_collection_report.json"
 
 SEQUENCES = ("MOT20-01", "MOT20-02", "MOT20-03", "MOT20-05")
@@ -25,20 +27,39 @@ REQUEST_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 60
 
 
+
 def list_repository_entries(path: str) -> list[dict[str, Any]]:
-    """List files in a repository directory."""
+    """List all files in a repository directory using pagination."""
     url = f"{HUB_API_URL}/tree/main/{path}"
+    entries: list[dict[str, Any]] = []
+    params: dict[str, Any] = {"limit": 100}
 
-    response = requests.get(
-        url,
-        params={"limit": 100},
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
+    while True:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        page = response.json()
 
-    entries = response.json()
-    if not isinstance(entries, list):
-        raise ValueError(f"Unexpected repository response for {path!r}")
+        if not isinstance(page, list):
+            raise ValueError(f"Unexpected repository response for {path!r}")
+
+        entries.extend(page)
+
+        # Hugging Face returns the next-page cursor in the response headers.
+        next_cursor = response.headers.get("Link")
+        if not next_cursor or 'rel="next"' not in next_cursor:
+            break
+
+        import re
+        match = re.search(r"<([^>]+)>;\s*rel=\"next\"", next_cursor)
+        if not match:
+            break
+
+        url = match.group(1)
+        params = {}
 
     return entries
 
@@ -51,14 +72,12 @@ def download_file(
     """Download a file and validate its size when available."""
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    if (
-        destination.exists()
-        and expected_size is not None
-        and destination.stat().st_size == expected_size
-    ):
-        logger.info("Already downloaded and validated: {}", destination)
-        return
-
+    if destination.exists() and destination.stat().st_size > 0:
+        actual_size = destination.stat().st_size
+        if expected_size is None or actual_size == expected_size:
+            # logger.info("Already downloaded and validated: {}", destination)
+            return
+        
     temporary_path = destination.with_suffix(destination.suffix + ".part")
 
     try:
@@ -126,6 +145,43 @@ def download_repository_file(repository_path: str) -> dict[str, Any]:
         "size_bytes": destination.stat().st_size,
     }
 
+def download_sequence_images(sequence: str) -> list[dict[str, Any]]:
+    """Download all images for a sequence with ground truth."""
+    gt_path = RAW_ROOT / sequence / "gt" / "gt.txt"
+    if not gt_path.exists() or gt_path.stat().st_size == 0:
+        logger.warning("{}: ground truth missing; images skipped", sequence)
+        return []
+
+    repository_dir = f"{SPLIT}/{sequence}/img1"
+    entries = list_repository_entries(repository_dir)
+    image_entries = [
+        item for item in entries
+        if item.get("type") == "file"
+        and Path(item.get("path", "")).suffix.lower() in {".jpg", ".jpeg", ".png"}
+    ]
+
+    if not image_entries:
+        raise FileNotFoundError(
+            f"No images found in Hugging Face repository: {repository_dir}"
+        )
+
+    downloaded: list[dict[str, Any]] = []
+    for entry in image_entries:
+        repository_path = entry["path"]
+        filename = Path(repository_path).name
+        destination = IMAGES_ROOT / sequence / filename
+        expected_size = entry.get("size")
+
+        download_file(repository_path, destination, expected_size)
+
+        downloaded.append({
+            "repository_path": repository_path,
+            "local_path": str(destination.relative_to(PROJECT_ROOT)),
+            "size_bytes": destination.stat().st_size,
+        })
+
+    logger.info("{}: {} images collected", sequence, len(image_entries))
+    return downloaded
 
 def main() -> None:
     """Download annotations and metadata for selected MOT20 sequences."""
@@ -143,6 +199,7 @@ def main() -> None:
             downloaded_files.append(
                 download_repository_file(repository_path)
             )
+            downloaded_files.extend(download_sequence_images(sequence))
 
     import json
 
@@ -175,3 +232,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

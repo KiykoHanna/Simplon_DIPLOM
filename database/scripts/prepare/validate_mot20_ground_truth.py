@@ -6,8 +6,8 @@ import pandas as pd
 from loguru import logger
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DATA_ROOT = PROJECT_ROOT / "database" / "data" / "mot20"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_ROOT = PROJECT_ROOT / "data" / "mot20"
 CSV_PATH = DATA_ROOT / "prepared" / "mot20_ground_truth.csv"
 RAW_ROOT = DATA_ROOT / "raw"
 

@@ -1,4 +1,4 @@
-
+﻿
 """Retrieve and inspect MOT17 data through the Hugging Face Hub API."""
 
 import csv
@@ -14,7 +14,7 @@ DATASET_ID = "Lekim89/MOT17"
 HUB_API_URL = f"https://huggingface.co/api/datasets/{DATASET_ID}"
 DATASET_URL = f"https://huggingface.co/datasets/{DATASET_ID}/resolve/main"
 REPORT_PATH = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "data"
     / "mot17"
     / "reports"
@@ -23,14 +23,14 @@ REPORT_PATH = (
 REQUEST_TIMEOUT = 30
 
 IMAGE_ROOT = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "data"
     / "mot17"
     / "images"
 )
 
 ANNOTATION_ROOT = (
-    Path(__file__).resolve().parents[1]
+    Path(__file__).resolve().parents[2]
     / "data"
     / "mot17"
     / "annotations"
@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     hf_token: str
 
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).resolve().parents[1] / ".env",
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         extra="ignore",
     )
 
@@ -359,8 +359,6 @@ def analyze_annotations(
             frame < 1
             or width <= 0
             or height <= 0
-            or left < 0
-            or top < 0
         ):
             invalid_bboxes += 1
             continue
@@ -544,3 +542,4 @@ if __name__ == "__main__":
         download_mot17_dataset()
     else:
         main()
+
