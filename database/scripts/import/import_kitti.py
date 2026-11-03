@@ -24,6 +24,30 @@ DATASET_NAME = "KITTI Tracking"
 
 CLASSES_SCRIPT = Path(__file__).resolve().parents[1] / "integrate_dataset_classes.py"
 
+SEQUENCE_DESCRIPTIONS = {
+    "0000": "Urban driving scene recorded from a moving vehicle.",
+    "0001": "Driving scene recorded from a moving vehicle.",
+    "0002": "Urban and suburban road traffic recorded from a moving vehicle.",
+    "0003": "Road traffic recorded from a moving vehicle.",
+    "0004": "Road traffic recorded from a moving vehicle.",
+    "0005": "Urban driving scene recorded from a moving vehicle.",
+    "0006": "Road traffic recorded from a moving vehicle.",
+    "0007": "Urban driving scene recorded from a moving vehicle.",
+    "0008": "Urban and suburban road traffic recorded from a moving vehicle.",
+    "0009": "Road traffic recorded from a moving vehicle.",
+    "0010": "Road traffic recorded from a moving vehicle.",
+    "0011": "Road traffic recorded from a moving vehicle.",
+    "0012": "Road traffic recorded from a moving vehicle.",
+    "0013": "Road traffic recorded from a moving vehicle.",
+    "0014": "Road traffic recorded from a moving vehicle.",
+    "0015": "Road traffic recorded from a moving vehicle.",
+    "0016": "Road traffic recorded from a moving vehicle.",
+    "0017": "Road traffic recorded from a moving vehicle.",
+    "0018": "Road traffic recorded from a moving vehicle.",
+    "0019": "Road traffic recorded from a moving vehicle.",
+    "0020": "Road traffic recorded from a moving vehicle.",
+}
+
 spec = importlib.util.spec_from_file_location(
     "integrate_dataset_classes", CLASSES_SCRIPT
 )
@@ -198,6 +222,9 @@ def main() -> None:
             sequence_ids = {}
 
             for info in sequence_info:
+
+                image_dir = f"kitti/raw/{info['split']}/image_02/{info['name']}/"
+
                 sequence = Sequence(
                     dataset_id=dataset.id,
                     name=info["name"],
@@ -209,7 +236,8 @@ def main() -> None:
                     ),
                     width=int(info["width"]) if info["width"] else None,
                     height=int(info["height"]) if info["height"] else None,
-                    description=f"KITTI Tracking split: {info['split']}",
+                    description=SEQUENCE_DESCRIPTIONS.get(info["name"]),
+                    image_url=image_dir,
                 )
                 session.add(sequence)
                 session.flush()

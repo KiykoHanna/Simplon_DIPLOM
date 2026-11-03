@@ -19,6 +19,13 @@ REQUIRED_COLUMNS = [
     "mark", "class_id", "visibility",
 ]
 
+COLUMN_MAPPING = {
+    "object_id": "track_id",
+    "x": "bbox_left",
+    "y": "bbox_top",
+    "width": "bbox_width",
+    "height": "bbox_height",
+}
 
 def main() -> None:
     if not SOURCE_PATH.is_file():
@@ -90,6 +97,7 @@ def main() -> None:
 
     invalid_rows = dataframe[invalid]
     valid = dataframe[~invalid].copy()
+    valid = valid.rename(columns=COLUMN_MAPPING)
 
     negative_coordinates = ((numeric["x"] < 0) | (numeric["y"] < 0))
     

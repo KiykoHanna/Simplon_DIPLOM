@@ -24,6 +24,8 @@ DATA_DIR = PROJECT_ROOT / "data" / "dancetrack"
 ARCHIVE_DIR = DATA_DIR / "archives"
 REPORT_DIR = DATA_DIR / "reports"
 GT_DIR = DATA_DIR / "ground_truth"
+RAW_DIR = DATA_DIR / "raw"
+DOWNLOAD_DIR = ARCHIVE_DIR
 
 OFFICIAL_URL = "https://dancetrack.github.io/"
 HF_URL = "https://huggingface.co/datasets/noahcao/dancetrack/tree/main"
@@ -277,6 +279,104 @@ def inspect_archive(name: str, url: str, local_path: Path | None = None) -> tupl
         result["errors"].append(f"{type(exc).__name__}: {exc}")
     return result, all_rows
 
+def extract_archive(archive_path: Path) -> dict:
+    """Safely extract a DanceTrack archive into RAW_DIR."""
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+
+    extracted_files = 0
+    extracted_images = 0
+
+    with zipfile.ZipFile(archive_path) as archive:
+        root = RAW_DIR.resolve()
+
+        for member in archive.infolist():
+            destination = (root / member.filename).resolve()
+
+            if not destination.is_relative_to(root):
+                raise ValueError(
+                    f"Unsafe archive member path: {member.filename}"
+                )
+
+        archive.extractall(RAW_DIR)
+
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+
+            extracted_files += 1
+
+            if (
+                "/img1/" in f"/{member.filename}"
+                and Path(member.filename).suffix.lower()
+                in {".jpg", ".jpeg", ".png"}
+            ):
+                extracted_images += 1
+
+    return {
+        "archive": archive_path.name,
+        "extracted_files": extracted_files,
+        "extracted_images": extracted_images,
+        "destination": str(RAW_DIR),
+        "status": "completed",
+    }
+
+def download_and_extract_all(
+    session: requests.Session,
+) -> list[dict]:
+    """Download and extract all DanceTrack archives."""
+    results = []
+
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+
+    for name, url in ARCHIVES.items():
+        archive_path = DOWNLOAD_DIR / name
+
+        logger.info(f"[DOWNLOAD] {name}")
+
+        try:
+            if archive_path.is_file() and zipfile.is_zipfile(
+                archive_path
+            ):
+                logger.info(
+                    f"  Existing archive: {archive_path}"
+                )
+            else:
+                archive_path = download_archive(
+                    session,
+                    name,
+                    url,
+                )
+
+            logger.info(f"[EXTRACT] {name}")
+
+            extraction = extract_archive(archive_path)
+            results.append(extraction)
+
+            logger.success(
+                f"  Extracted {extraction['extracted_files']:,} "
+                f"files, including "
+                f"{extraction['extracted_images']:,} images"
+            )
+
+        except Exception as exc:
+            error = {
+                "archive": name,
+                "status": "failed",
+                "errors": [
+                    f"{type(exc).__name__}: {exc}"
+                ],
+            }
+            results.append(error)
+
+            logger.error(
+                f"Failed to download/extract {name}: {exc}"
+            )
+
+            raise
+
+    return results
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape, inspect and validate DanceTrack archives.")
@@ -288,6 +388,10 @@ def main() -> None:
         "--local-only", action="store_true",
         help="Inspect only downloaded archives found in database/data/dancetrack/archives.",
     )
+    parser.add_argument(
+    "--download-all", action="store_true",
+    help="Download and extract all DanceTrack archives.",
+)
     args = parser.parse_args()
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -301,12 +405,25 @@ def main() -> None:
     all_gt_rows = []
     selected_names = [args.download] if args.download else list(ARCHIVES)
 
+    download_results = []
+
     with requests.Session() as session:
         session.headers.update(HEADERS)
+
         report["sources"] = [
             scrape_page(session, "official_website", OFFICIAL_URL),
             scrape_page(session, "huggingface_dataset", HF_URL),
         ]
+
+        if args.download_all:
+            download_results = download_and_extract_all(session)
+            report["images_downloaded"] = all(
+                item["status"] == "completed"
+                for item in download_results
+            )
+            report["archive_downloads"] = download_results
+
+    
         for name in selected_names:
             url = ARCHIVES[name]
             local_path = ARCHIVE_DIR / name
@@ -370,6 +487,9 @@ def main() -> None:
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     report["summary"] = {
+        "images_downloaded": report["images_downloaded"],
+        "archives_extracted": sum( 1 for item in download_results if item["status"] == "completed"),
+        "images_extracted": sum(item.get("extracted_images", 0) for item in download_results),
         "archives_selected": len(selected_names),
         "archives_inspected": sum(1 for item in report["archive_validation"] if item.get("status") == "completed"),
         "archives_failed_or_skipped": sum(1 for item in report["archive_validation"] if item.get("status") != "completed"),

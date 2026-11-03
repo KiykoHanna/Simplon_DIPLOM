@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import struct
+from loguru import logger
 from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
@@ -118,6 +119,42 @@ def download_file(session: requests.Session, url: str, target: Path) -> dict[str
             pass
     return meta
 
+def extract_image_archive(archive_path: Path) -> dict[str, Any]:
+    """Extract KITTI images into the raw data directory."""
+    result = {
+        "archive": str(archive_path),
+        "target": str(RAW_ROOT),
+        "status": "failed",
+        "files_extracted": 0,
+        "errors": [],
+    }
+
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            members = archive.infolist()
+
+            # Prevent extraction outside RAW_ROOT.
+            root = RAW_ROOT.resolve()
+            for member in members:
+                destination = (root / member.filename).resolve()
+                if not destination.is_relative_to(root):
+                    raise ValueError(
+                        f"Unsafe archive member: {member.filename}"
+                    )
+
+            archive.extractall(RAW_ROOT)
+            result["files_extracted"] = sum(
+                not member.is_dir() for member in members
+            )
+            result["status"] = "completed"
+
+    except Exception as exc:
+        result["errors"].append(
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    return result
+
 
 def png_dimensions(data: bytes) -> tuple[int | None, int | None]:
     """Read width and height from a PNG IHDR header without Pillow."""
@@ -186,36 +223,100 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--download-labels", action="store_true", help="Download the official training GT labels archive (~9 MB).")
     parser.add_argument("--inspect-images-remote", action="store_true", help="Inspect image ZIP central directory using HTTP Range; does not download the full image archive.")
+    parser.add_argument("--download-images", action="store_true", help="Download and extract the official KITTI images archive.")
+    
     args = parser.parse_args()
+
+
     for folder in (RAW_ROOT, REPORT_ROOT, ARCHIVE_ROOT):
         folder.mkdir(parents=True, exist_ok=True)
+
     session = request_session()
-    report: dict[str, Any] = {"dataset": "KITTI Tracking", "collected_at": now_iso(), "official_url": OFFICIAL_URL, "web_scraping": {}, "download_probes": [], "label_download": None, "image_archive_metadata": None, "errors": []}
-    print("[SCRAPE] Official KITTI Tracking page")
+    
+    report: dict[str, Any] = {
+        "dataset": "KITTI Tracking",
+        "collected_at": now_iso(),
+        "official_url": OFFICIAL_URL,
+        "web_scraping": {},
+        "download_probes": [],
+        "label_download": None,
+        "image_download": None,
+        "image_archive_metadata": None,
+        "errors": [],
+        }
+    
+    logger.info("[SCRAPE] Official KITTI Tracking page")
     report["web_scraping"] = scrape_official_page(session)
+
     (RAW_ROOT / "kitti_official_page.json").write_text(json.dumps(report["web_scraping"], ensure_ascii=False, indent=2), encoding="utf-8")
+    
     for label, url in (("labels", LABEL_ARCHIVE_URL), ("images", IMAGE_ARCHIVE_URL)):
-        print(f"[PROBE] {label}")
+        logger.info(f"[PROBE] {label}")
         report["download_probes"].append({"kind": label, **probe_url(session, url)})
+    
     if args.download_labels:
         target = ARCHIVE_ROOT / "data_tracking_label_2.zip"
-        print("[DOWNLOAD] GT labels archive")
+        logger.info("[DOWNLOAD] GT labels archive")
         report["label_download"] = download_file(session, LABEL_ARCHIVE_URL, target)
         if report["label_download"].get("status") != "completed":
-            print("[ERROR] Label download failed:", report["label_download"].get("error"), file=sys.stderr)
+            logger.error("[ERROR] Label download failed:", report["label_download"].get("error"), file=sys.stderr)
         else:
-            print(f"[DOWNLOAD] {target} ({report['label_download'].get('bytes_downloaded')} bytes)")
+            logger.info(f"[DOWNLOAD] {target} ({report['label_download'].get('bytes_downloaded')} bytes)")
+    
+    if args.download_images:
+        target = ARCHIVE_ROOT / "data_tracking_image_2.zip"
+
+        logger.info("[DOWNLOAD] KITTI images archive")
+        report["image_download"] = download_file(
+            session,
+            IMAGE_ARCHIVE_URL,
+            target,
+        )
+
+        if report["image_download"].get("status") != "completed":
+            logger.error(
+                "Image archive download failed: {}",
+                report["image_download"].get("error"),
+            )
+        else:
+            logger.info(
+                "Image archive downloaded: {} bytes",
+                report["image_download"].get("bytes_downloaded"),
+            )
+
+            logger.info("[EXTRACT] KITTI images")
+            report["image_download"]["extraction"] = (
+                extract_image_archive(target)
+            )
+
+            if (
+                report["image_download"]["extraction"]["status"]
+                == "completed"
+            ):
+                logger.info(
+                    "Extracted {} files into {}",
+                    report["image_download"]["extraction"][
+                        "files_extracted"
+                    ],
+                    RAW_ROOT,
+                )
+            else:
+                logger.error(
+                    "Image extraction failed: {}",
+                    report["image_download"]["extraction"]["errors"],
+                )
+    
     if args.inspect_images_remote:
-        print("[INSPECT] Image archive metadata via HTTP Range; no full archive download")
+        logger.info("[INSPECT] Image archive metadata via HTTP Range; no full archive download")
         report["image_archive_metadata"] = inspect_image_archive_remote(IMAGE_ARCHIVE_URL)
         (RAW_ROOT / "kitti_image_archive_metadata.json").write_text(json.dumps(report["image_archive_metadata"], ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[INSPECT] status={report['image_archive_metadata'].get('status')}, sequences={len(report['image_archive_metadata'].get('sequences', []))}, images={report['image_archive_metadata'].get('image_files', 0)}")
+        logger.info(f"[INSPECT] status={report['image_archive_metadata'].get('status')}, sequences={len(report['image_archive_metadata'].get('sequences', []))}, images={report['image_archive_metadata'].get('image_files', 0)}")
         if report["image_archive_metadata"].get("errors"):
-            print("[WARN]", report["image_archive_metadata"]["errors"][:3])
+            logger.warning("[WARN]", report["image_archive_metadata"]["errors"][:3])
     (RAW_ROOT / "kitti_collection_manifest.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     (REPORT_ROOT / "kitti_collection_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[RAW] {RAW_ROOT}")
-    print(f"[REPORT] {REPORT_ROOT / 'kitti_collection_report.json'}")
+    logger.info(f"[RAW] {RAW_ROOT}")
+    logger.info(f"[REPORT] {REPORT_ROOT / 'kitti_collection_report.json'}")
     return 0
 
 if __name__ == "__main__":

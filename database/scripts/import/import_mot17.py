@@ -32,6 +32,37 @@ DETECTORS = ("DPM", "FRCNN", "SDP")
 BATCH_SIZE = 50_000
 DATASET_NAME = "MOT17"
 
+SEQUENCE_DESCRIPTIONS = {
+    "MOT17-02": (
+        "Pedestrian traffic at ETH-Bahnhof, "
+        "with people moving through a busy station area."
+    ),
+    "MOT17-04": (
+        "Pedestrian crossing scene at ETH-Pedcross2, "
+        "with people crossing in different directions."
+    ),
+    "MOT17-05": (
+        "Pedestrian traffic at ADL-Rundle-1, "
+        "recorded in an urban environment."
+    ),
+    "MOT17-09": (
+        "Pedestrian traffic at ETH-Sunnyday, "
+        "recorded in an outdoor urban environment."
+    ),
+    "MOT17-10": (
+        "Pedestrian traffic at TUD-Stadtmitte, "
+        "in a busy urban area."
+    ),
+    "MOT17-11": (
+        "Pedestrian traffic in the KITTI-17 sequence, "
+        "recorded in an outdoor environment."
+    ),
+    "MOT17-13": (
+        "Pedestrian traffic at Venice-2, "
+        "recorded in an urban environment."
+    ),
+}
+
 
 def read_sequence_info(path: Path) -> dict:
     """Read metadata and normalize the sequence name."""
@@ -210,6 +241,9 @@ def main() -> None:
             detection_set_ids = {}
 
             for info in sequences:
+
+                image_dir = f"mot17/images/train/{info['name']}/"
+
                 sequence = Sequence(
                     dataset_id=dataset.id,
                     name=info["name"],
@@ -217,6 +251,8 @@ def main() -> None:
                     frame_count=info["frame_count"],
                     width=info["width"],
                     height=info["height"],
+                    description=SEQUENCE_DESCRIPTIONS.get(info["name"]),
+                    image_url=image_dir,
                 )
                 session.add(sequence)
                 session.flush()

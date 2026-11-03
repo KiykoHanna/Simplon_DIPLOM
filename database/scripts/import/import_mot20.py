@@ -22,6 +22,12 @@ DETECTIONS_PATH = PARQUET_ROOT / "mot20_detections.parquet"
 BATCH_SIZE = 50_000
 DATASET_NAME = "MOT20"
 
+SEQUENCE_DESCRIPTIONS = {"MOT20-01": ("Crowded indoor train station with dense pedestrian traffic."),
+    "MOT20-02": ("Crowded indoor train station with dense pedestrian traffic."),
+    "MOT20-03": ("People leaving a stadium entrance at night, recorded from an elevated viewpoint."),
+    "MOT20-05": ("Crowded square at night with extremely dense pedestrian traffic."),
+}
+
 
 def read_sequence_info(path: Path) -> dict:
     """Read sequence metadata from seqinfo.ini."""
@@ -185,6 +191,9 @@ def main() -> None:
             detection_set_ids = {}
 
             for info in sequences:
+
+                image_dir = f"mot20/images/{info['name']}/"
+
                 sequence = Sequence(
                     dataset_id=dataset.id,
                     name=info["name"],
@@ -192,6 +201,8 @@ def main() -> None:
                     frame_count=info["frame_count"],
                     width=info["width"],
                     height=info["height"],
+                    image_url=image_dir,
+                    description=SEQUENCE_DESCRIPTIONS.get(info["name"]),
                 )
                 session.add(sequence)
                 session.flush()
