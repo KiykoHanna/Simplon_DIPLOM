@@ -46,6 +46,9 @@ class Sequence(Base):
         back_populates="sequence",
         cascade="all, delete-orphan",
     )
+    experiments: Mapped[list["Experiment"]] = relationship(
+        back_populates="sequence"
+    )
 
 
 class DatasetClass(Base):
